@@ -1,0 +1,24 @@
+---
+- name: Prepare all lab nodes
+  hosts: lab
+  become: true
+  roles:
+    - common
+
+- name: Install blue team stack
+  hosts: soc
+  become: true
+  roles:
+    - soc
+
+- name: Install red team stack
+  hosts: attacker
+  become: true
+  roles:
+    - attacker
+
+- name: Enroll monitored endpoint
+  hosts: target
+  become: true
+  roles:
+    - target

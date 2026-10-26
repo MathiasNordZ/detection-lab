@@ -1,0 +1,110 @@
+---
+- name: Fetch pinned Wazuh Docker release
+  ansible.builtin.git:
+    repo: https://github.com/wazuh/wazuh-docker.git
+    dest: /opt/detection-lab/wazuh-docker
+    version: v4.14.9
+    depth: 1
+    update: false
+
+- name: Create Wazuh custom rules directory
+  ansible.builtin.file:
+    path: /opt/detection-lab/wazuh-docker/single-node/config/wazuh_rules
+    state: directory
+    mode: "0750"
+
+- name: Install example lab detection rule
+  ansible.builtin.copy:
+    src: wazuh/local_rules.xml
+    dest: /opt/detection-lab/wazuh-docker/single-node/config/wazuh_rules/local_rules.xml
+    mode: "0640"
+
+- name: Mount custom Wazuh rules
+  ansible.builtin.copy:
+    dest: /opt/detection-lab/wazuh-docker/single-node/docker-compose.override.yml
+    mode: "0644"
+    content: |
+      services:
+        wazuh.manager:
+          volumes:
+            - ./config/wazuh_rules/local_rules.xml:/var/ossec/etc/rules/local_rules.xml:ro
+
+- name: Generate Wazuh indexer certificates
+  ansible.builtin.command:
+    cmd: docker compose -f generate-indexer-certs.yml run --rm generator
+    chdir: /opt/detection-lab/wazuh-docker/single-node
+    creates: /opt/detection-lab/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs/root-ca.pem
+
+- name: Start Wazuh single-node stack
+  ansible.builtin.command:
+    cmd: docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+    chdir: /opt/detection-lab/wazuh-docker/single-node
+  changed_when: true
+
+- name: Fetch pinned IRIS stable release
+  ansible.builtin.git:
+    repo: https://github.com/dfir-iris/iris-web.git
+    dest: /opt/detection-lab/iris-web
+    version: v2.4.29
+    depth: 1
+    update: false
+
+- name: Initialize IRIS environment file
+  ansible.builtin.copy:
+    src: /opt/detection-lab/iris-web/.env.model
+    dest: /opt/detection-lab/iris-web/.env
+    remote_src: true
+    force: false
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Create persistent IRIS administrator password
+  ansible.builtin.shell:
+    cmd: "test -s /root/.detection-lab-iris-password || openssl rand -hex 24 > /root/.detection-lab-iris-password"
+    creates: /root/.detection-lab-iris-password
+  no_log: true
+
+- name: Read IRIS administrator password
+  ansible.builtin.slurp:
+    src: /root/.detection-lab-iris-password
+  register: iris_admin_password
+  no_log: true
+
+- name: Configure IRIS administrator password
+  ansible.builtin.lineinfile:
+    path: /opt/detection-lab/iris-web/.env
+    regexp: '^IRIS_ADM_PASSWORD='
+    line: "IRIS_ADM_PASSWORD={{ iris_admin_password.content | b64decode | trim }}"
+    create: false
+    mode: "0600"
+  no_log: true
+
+- name: Publish IRIS on a separate HTTPS port
+  ansible.builtin.copy:
+    dest: /opt/detection-lab/iris-web/docker-compose.override.yml
+    mode: "0644"
+    content: |
+      services:
+        nginx:
+          ports:
+            - "8443:443"
+
+- name: Start IRIS compose stack
+  ansible.builtin.command:
+    cmd: docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+    chdir: /opt/detection-lab/iris-web
+  changed_when: true
+
+- name: Wait for Wazuh agent enrollment port
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 1515
+    delay: 20
+    timeout: 900
+
+- name: Wait for Wazuh manager events port
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 1514
+    timeout: 120

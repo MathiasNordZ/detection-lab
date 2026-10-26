@@ -1,0 +1,8 @@
+external_network_name = "provider-network"
+image_name            = "Ubuntu 24.04"
+flavor_soc            = "m1.large"
+flavor_attacker       = "m1.medium"
+flavor_target         = "m1.medium"
+keypair_name          = "my-openstack-key"
+trusted_cidr          = "198.51.100.7/32"
+lab_name              = "detection-lab"

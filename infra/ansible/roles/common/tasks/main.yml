@@ -1,0 +1,38 @@
+---
+- name: Create lab service directory
+  ansible.builtin.file:
+    path: /opt/detection-lab
+    state: directory
+    mode: "0755"
+
+- name: Install base packages and Docker
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - git
+      - docker.io
+      - docker-compose-v2
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Enable Docker
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Persist Wazuh indexer vm.max_map_count
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-detection-lab.conf
+    content: "vm.max_map_count=262144\n"
+    owner: root
+    group: root
+    mode: "0644"
+  when: inventory_hostname == 'soc'
+
+- name: Apply Wazuh indexer vm.max_map_count
+  ansible.builtin.command: sysctl --system
+  changed_when: true
+  when: inventory_hostname == 'soc'

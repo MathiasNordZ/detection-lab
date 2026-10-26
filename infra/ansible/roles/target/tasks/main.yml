@@ -1,0 +1,53 @@
+---
+- name: Add Wazuh signing key
+  ansible.builtin.get_url:
+    url: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+    dest: /usr/share/keyrings/wazuh.asc
+    mode: "0644"
+
+- name: Add Wazuh apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/wazuh.asc] https://packages.wazuh.com/4.x/apt/ stable main"
+    filename: wazuh
+    state: present
+
+- name: Install Wazuh agent
+  ansible.builtin.apt:
+    name: wazuh-agent
+    state: present
+    update_cache: true
+
+- name: Configure Wazuh manager address
+  ansible.builtin.replace:
+    path: /var/ossec/etc/ossec.conf
+    regexp: "<address>MANAGER_IP</address>"
+    replace: "<address>{{ hostvars['soc'].ansible_host }}</address>"
+  notify: Restart Wazuh agent
+
+- name: Add lab exercise log to Wazuh agent collection
+  ansible.builtin.blockinfile:
+    path: /var/ossec/etc/ossec.conf
+    insertbefore: "</ossec_config>"
+    marker: "    <!-- {mark} DETECTION LAB EXERCISE LOG -->"
+    block: |
+      <localfile>
+        <log_format>syslog</log_format>
+        <location>/var/log/detection-lab.log</location>
+      </localfile>
+  notify: Restart Wazuh agent
+
+- name: Create exercise log
+  ansible.builtin.file:
+    path: /var/log/detection-lab.log
+    state: touch
+    owner: root
+    group: adm
+    mode: "0640"
+    modification_time: preserve
+    access_time: preserve
+
+- name: Start Wazuh agent
+  ansible.builtin.service:
+    name: wazuh-agent
+    state: started
+    enabled: true

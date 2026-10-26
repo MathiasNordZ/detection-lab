@@ -1,0 +1,9 @@
+<group name="local,attack_simulation,">
+  <rule id="100500" level="8">
+    <match>detection-lab-atomic</match>
+    <description>Detection lab atomic simulation marker detected.</description>
+    <mitre>
+      <id>T1059.004</id>
+    </mitre>
+  </rule>
+</group>

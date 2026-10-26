@@ -1,0 +1,35 @@
+---
+- name: Create exercise directory
+  ansible.builtin.file:
+    path: /opt/detection-lab
+    state: directory
+    mode: "0755"
+
+- name: Fetch pinned MITRE Caldera release and plugins
+  ansible.builtin.git:
+    repo: https://github.com/mitre/caldera.git
+    dest: /opt/detection-lab/caldera
+    version: 5.3.0
+    recursive: true
+    depth: 1
+    update: false
+
+- name: Build Caldera container
+  ansible.builtin.command:
+    cmd: docker compose build
+    chdir: /opt/detection-lab/caldera
+  changed_when: true
+
+- name: Start Caldera
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: /opt/detection-lab/caldera
+  changed_when: true
+
+- name: Fetch Atomic Red Team library
+  ansible.builtin.git:
+    repo: https://github.com/redcanaryco/atomic-red-team.git
+    dest: /opt/detection-lab/atomic-red-team
+    version: master
+    depth: 1
+    update: false

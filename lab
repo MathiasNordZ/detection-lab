@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INFRA="$ROOT/infra"
+ACTION="${1:-help}"
+
+require() {
+  command -v "$1" >/dev/null 2>&1 || { echo "Required command not found: $1" >&2; exit 1; }
+}
+
+write_inventory() {
+  local output ssh_key
+  output="$(tofu -chdir="$INFRA" output -json)"
+  ssh_key="${ANSIBLE_PRIVATE_KEY:-$HOME/.ssh/id_ed25519}"
+  python3 -c 'import json,sys
+o=json.load(sys.stdin)
+fixed=o["fixed_ips"]["value"]
+soc=o["soc_floating_ip"]["value"]
+key=sys.argv[1]
+lines=["all:","  vars:","    ansible_user: ubuntu",f"    ansible_ssh_private_key_file: {key}","  children:","    lab:","      hosts:"]
+for name, address in [("soc",soc),("attacker",fixed["attacker"]),("target",fixed["target"])]:
+    lines += [f"        {name}:",f"          ansible_host: {address}"]
+    if name != "soc": lines += [f"          ansible_ssh_common_args: -o ProxyJump=ubuntu@{soc}"]
+for name in ["soc","attacker","target"]: lines += [f"    {name}:","      hosts:",f"        {name}:"]
+print("\n".join(lines))' "$ssh_key" <<<"$output" > "$INFRA/ansible/inventory.generated.yml"
+  chmod 600 "$INFRA/ansible/inventory.generated.yml"
+}
+
+run_configure() {
+  require tofu
+  require ansible-playbook
+  write_inventory
+  ANSIBLE_CONFIG="$INFRA/ansible/ansible.cfg" ansible-playbook -i "$INFRA/ansible/inventory.generated.yml" "$INFRA/ansible/site.yml"
+}
+
+case "$ACTION" in
+  plan|up|destroy)
+    require tofu
+    [[ -f "$INFRA/terraform.tfvars" ]] || { echo "Create infra/terraform.tfvars from infra/terraform.tfvars.example first." >&2; exit 1; }
+    tofu -chdir="$INFRA" init
+    if [[ "$ACTION" == plan ]]; then
+      tofu -chdir="$INFRA" plan
+    elif [[ "$ACTION" == destroy ]]; then
+      tofu -chdir="$INFRA" destroy
+    else
+      tofu -chdir="$INFRA" apply
+      run_configure
+      tofu -chdir="$INFRA" output
+    fi
+    ;;
+  configure)
+    run_configure
+    ;;
+  help|*)
+    echo "Usage: ./lab {plan|up|configure|destroy}"
+    ;;
+esac

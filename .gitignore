@@ -1,0 +1,8 @@
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/terraform.tfstate
+infra/terraform.tfstate.*
+infra/terraform.tfvars
+infra/ansible/inventory.generated.yml
+infra/ansible/.vault-pass
+*.retry
